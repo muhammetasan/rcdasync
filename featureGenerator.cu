@@ -245,6 +245,7 @@ void featureGenerator::generateFeatureImages()
 		imageRows,imageCols);
 	kernel_generateFeatureImages << < { (uint)(imageCols + 31) / 32, (uint)(imageRows + 31) / 32}, { 32, 32 },0,computeStream >> >(inputImage_UCP_d,
 		 greyImage_UCP_d, _features_fp_d, imageCols, imageRows);
+	cudaEventRecord(waitevent, copyStream);
 }
 
 

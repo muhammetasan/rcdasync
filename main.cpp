@@ -109,7 +109,7 @@ int main(int argc,char * argv[])
 		if (counter == frames.size() - 1)
 			break;
 
-		//cudaStreamWaitEvent(featGen.computeStream, featGen.waitevent);
+		cudaStreamWaitEvent(featGen.computeStream, featGen.waitevent,0);
 		cudaMemcpyAsync(featGen.inputImage_UCP_d, frames[frameCounter++], videoHeight*videoWidth * 3, cudaMemcpyDeviceToHost, featGen.copyStream);
 
 		// start async copy. 
@@ -147,7 +147,7 @@ int main(int argc,char * argv[])
 		imshow("Output", outputImg);
 		waitKey(1);
 		counter++;
-		if (counter == 5);
+		if (counter == 2)break;
 
 	}
 
