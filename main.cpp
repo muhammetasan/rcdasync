@@ -51,7 +51,19 @@ int main(int argc,char * argv[])
     VideoCapture capture("a.mp4");
 	int videoWidth = capture.get(CV_CAP_PROP_FRAME_WIDTH);
 	int videoHeight = capture.get(CV_CAP_PROP_FRAME_HEIGHT);
-	capture >> img;
+	
+	
+	std::vector<Mat> frames;
+
+	while (true)
+	{
+		capture >> img;
+		if (img.empty()) break;
+		frames.push_back(img.clone());
+	}
+
+	
+	img = frames.front();
 
 
 
@@ -61,20 +73,23 @@ int main(int argc,char * argv[])
 
 	vector<KeyPoint> cudaKeypts;
 	featGen.allocateCovarianceMatrixSpace(cudaKeypts);
+	int counter = 0;
+	featGen.updateImage(img);
 
 	while (true)
 	{
-		capture >> img;
-		if (img.empty()) break;
-		featGen.updateImage(img);
-		//featGen.syncAnderrorCheck();
-		//std::cout<<(1000*(clock()-start))/CLOCKS_PER_SEC<<endl; // 8ms
 	
 		// featGen.syncAnderrorCheck();
 		// start = clock();
 		featGen.generateFeatureImages();
 		// featGen.syncAnderrorCheck();
 		// std::cout<<(1000*(clock()-start))/CLOCKS_PER_SEC<<endl; // 1ms
+
+		img = frames[counter++];
+		if (counter == frames.size() - 1)
+			break;
+
+		// start async copy. 
 
 		// start = clock();
 	 	featGen.generateSquareFeatures();
@@ -107,7 +122,6 @@ int main(int argc,char * argv[])
 		// return 0;
 		imshow("Output", outputImg);
 		waitKey(1);
-		return 0;
 
 	}
 }
