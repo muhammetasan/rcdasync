@@ -107,7 +107,6 @@ int main(int argc,char * argv[])
 		// return 0;
 		imshow("Output", outputImg);
 		waitKey(1);
-		return 0;
 
 	}
 }
