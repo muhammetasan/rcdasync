@@ -241,9 +241,9 @@ __global__ void kernel_generateFeatureImages(uchar * inputImageColor, uchar * gr
 void featureGenerator::generateFeatureImages()
 {
 	// bunu integralcol gibi cagirabiliriz
-	kernel_calculateGreyImage<<< {(uint)(imageCols+31)/32,(uint)(imageRows + 31) / 32},{32,32}>>>(inputImage_UCP_d,greyImage_UCP_d,
+	kernel_calculateGreyImage<<< {(uint)(imageCols+31)/32,(uint)(imageRows + 31) / 32},{32,32}, 0, computeStream >>>(inputImage_UCP_d,greyImage_UCP_d,
 		imageRows,imageCols);
-	kernel_generateFeatureImages << < { (uint)(imageCols + 31) / 32, (uint)(imageRows + 31) / 32}, { 32, 32 } >> >(inputImage_UCP_d,
+	kernel_generateFeatureImages << < { (uint)(imageCols + 31) / 32, (uint)(imageRows + 31) / 32}, { 32, 32 },0,computeStream >> >(inputImage_UCP_d,
 		 greyImage_UCP_d, _features_fp_d, imageCols, imageRows);
 }
 
@@ -259,7 +259,7 @@ __global__ void kernel_pointwiseMultiply(float ** features, float ** sqFeatures,
 
 void featureGenerator::generateSquareFeatures()
 {
-	kernel_pointwiseMultiply << <{(unsigned int)imageCols / 2, ((FEATURE_COUNT + 1)*FEATURE_COUNT) / 2}, { 1024 } >> >(_features_fp_d, _features_fp_d + FEATURE_COUNT, imageCols*imageRows);
+	kernel_pointwiseMultiply << < {(unsigned int)imageCols / 2, ((FEATURE_COUNT + 1)*FEATURE_COUNT) / 2}, { 1024 },0 , computeStream >> > (_features_fp_d, _features_fp_d + FEATURE_COUNT, imageCols*imageRows);
 }
 
 
@@ -277,7 +277,6 @@ void featureGenerator::syncAnderrorCheck()
 
 void featureGenerator::allocateDevice()
 {
-	cudaDeviceReset();
 	cudaMalloc(&inputImage_UCP_d, pixelNumber * image_Mat.channels());
 	cudaMalloc(&greyImage_UCP_d, pixelNumber);
 	cudaMalloc(static_cast<float***>(&_features_fp_d), (sqFeatureSize + FEATURE_COUNT)*sizeof(float*));
@@ -354,7 +353,7 @@ void featureGenerator::copyObjectDescriptor2Device(float * objectDescriptor, flo
 
 void featureGenerator::copyDataToDevice()
 {
-	cudaMemcpy(inputImage_UCP_d, image_Mat.data, pixelNumber * image_Mat.channels(), cudaMemcpyHostToDevice);
+	cudaMemcpyAsync(inputImage_UCP_d, image_Mat.data, pixelNumber * image_Mat.channels(), cudaMemcpyHostToDevice,copyStream);
 }
 
 void featureGenerator::setWinSize(const unsigned & winSize, const float & tolerance)
@@ -379,7 +378,7 @@ void featureGenerator::calculateCovarianceMatrix()
 		const int winStep = __vWinStep[scale_];
 		const unsigned int kpNumberX = __vKpNumberX[scale_];
 		const unsigned int kpNumberY = __vKpNumberY[scale_];
-		kernel_calCovMatrix << < {kpNumberX, kpNumberY}, { 32 } >> >(_covMatDistances_d+indexOfKpInFeatures, 
+		kernel_calCovMatrix << < {kpNumberX, kpNumberY}, { 32 } ,0, computeStream >> >(_covMatDistances_d+indexOfKpInFeatures,
 		__objDescriptor_d,__objLogDeterminant_d, kpNumberX, kpNumberY, winStep, curWinSize, imageCols, imageRows, curWinSize*curWinSize,
 			_features_fp_d, _features_fp_d + FEATURE_COUNT);
 		indexOfKpInFeatures +=kpNumberX*kpNumberY;
@@ -429,8 +428,8 @@ void featureGenerator::calculateObjectIntegral()
 	gridForCol.y = FEATURE_COUNT + sqFeatureSize;
 	gridForCol.z = 1;
 
-	integralCol << <gridForCol, block >> >(_features_fp_d, imageCols, imageRows);
-	integralRow << <grid, block >> >(_features_fp_d, imageCols, imageRows);
+	integralCol << <gridForCol, block, 0 , computeStream >> >(_features_fp_d, imageCols, imageRows);
+	integralRow << <grid, block, 0, computeStream >> >(_features_fp_d, imageCols, imageRows);
 }
 
 void featureGenerator::calculateIntegralImages()
@@ -449,8 +448,8 @@ void featureGenerator::calculateIntegralImages()
 
 
 
-	integralCol << <gridForCol, block >> >(_features_fp_d, imageCols, imageRows);
-	scan << < {FEATURE_COUNT + sqFeatureSize, (unsigned int)imageRows}, { 1024 } >> >(_features_fp_d, imageCols, imageRows);
+	integralCol << <gridForCol, block, 0, computeStream >> >(_features_fp_d, imageCols, imageRows);
+	scan << < {FEATURE_COUNT + sqFeatureSize, (unsigned int)imageRows}, { 1024 }, 0, computeStream >> >(_features_fp_d, imageCols, imageRows);
 }
 
 
@@ -547,7 +546,7 @@ void featureGenerator::findMinimumOnGPU(int & IndexFound)
 //	//std::cout<<blockNumber<<" time "<<(1000*(clock()-start))/CLOCKS_PER_SEC<<endl;
 //	cudaMemcpy(_resultsVals_h,_resultsVals_d,blockNumber*sizeof(float),cudaMemcpyDeviceToHost);
  
-	cudaMemcpy(covmatdistances_h, _covMatDistances_d, totalKeypoints*sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpyAsync(covmatdistances_h, _covMatDistances_d, totalKeypoints*sizeof(float), cudaMemcpyDeviceToHost,computeStream);
 	syncAnderrorCheck();
 	float minVal = FLT_MAX;
 	int indexMin = 0;
@@ -571,5 +570,4 @@ void featureGenerator::findMinimumOnGPU(int & IndexFound)
 		}
 	}*/
 	IndexFound = indexMin;
-
 }

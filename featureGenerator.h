@@ -74,7 +74,7 @@ class featureGenerator
 	void copyDataToDevice();
 	void allocateCovarianceMatrixSpace(vector<KeyPoint> &vec);
 
-  private:
+  public:
 	uchar *inputImage_UCP_d;
 	uchar *greyImage_UCP_d;
 	int imageRows;
@@ -108,6 +108,9 @@ class featureGenerator
 	vector<int> __vWinStep;
 	vector<int> __vKpNumberX;
 	vector<int> __vKpNumberY;
+	cudaStream_t  computeStream;
+	cudaStream_t  copyStream;
+	cudaEvent_t waitevent;
 };
 
 #endif

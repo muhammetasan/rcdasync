@@ -12,6 +12,15 @@ int main(int argc,char * argv[])
 	Mat objImage = imread("Untitled.png");
 	const int winSize = objImage.rows < objImage.cols ? objImage.rows : objImage.cols;
 
+	cudaEventCreate(&featGen.waitevent);
+	cudaStreamCreate(&featGen.computeStream);
+	cudaStreamCreate(&featGen.copyStream);
+
+	auto copyStream = featGen.copyStream;
+	auto computeStream = featGen.computeStream;
+
+	featGen.copyStream = 0;
+	featGen.computeStream = 0;
 
 	const float tolerance = 0.1;
 	// object part
@@ -47,47 +56,61 @@ int main(int argc,char * argv[])
 
 	// end object part
 
+	featGen.computeStream = computeStream;
+	featGen.copyStream = copyStream;
+
 	featGen.setWinSize(winSize, tolerance);
     VideoCapture capture("a.mp4");
 	int videoWidth = capture.get(CV_CAP_PROP_FRAME_WIDTH);
 	int videoHeight = capture.get(CV_CAP_PROP_FRAME_HEIGHT);
 	
 	
-	std::vector<Mat> frames;
+	std::vector<uchar*> frames;
 
 	while (true)
 	{
+		uchar * memAdres;
+		cudaMallocHost(&memAdres, videoHeight*videoWidth * 3);
+		frames.push_back(memAdres);
+
 		capture >> img;
 		if (img.empty()) break;
-		frames.push_back(img.clone());
+		memcpy(memAdres, img.data, videoHeight*videoWidth * 3);
 	}
 
 	
-	img = frames.front();
 
-
-
-
+	img = Mat(Size(videoWidth, videoHeight), CV_8UC3, frames[0], Mat::AUTO_STEP);
 	featGen.setInputImage(img);
 	featGen.copyObjectDescriptor2Device((float*)objDescriptor.data, log(cv::determinant(objDescriptor.reshape(1, FEATURE_COUNT))));
 
 	vector<KeyPoint> cudaKeypts;
 	featGen.allocateCovarianceMatrixSpace(cudaKeypts);
+	featGen.syncAnderrorCheck();
 	int counter = 0;
 	featGen.updateImage(img);
+	featGen.syncAnderrorCheck();
+	int frameCounter = 1;
+
+	
 
 	while (true)
 	{
 	
+		static int counter = 0;
+		
 		// featGen.syncAnderrorCheck();
-		// start = clock();
+		clock_t start = clock();
 		featGen.generateFeatureImages();
 		// featGen.syncAnderrorCheck();
 		// std::cout<<(1000*(clock()-start))/CLOCKS_PER_SEC<<endl; // 1ms
 
-		img = frames[counter++];
+		//img = frames[counter++];
 		if (counter == frames.size() - 1)
 			break;
+
+		//cudaStreamWaitEvent(featGen.computeStream, featGen.waitevent);
+		cudaMemcpyAsync(featGen.inputImage_UCP_d, frames[frameCounter++], videoHeight*videoWidth * 3, cudaMemcpyDeviceToHost, featGen.copyStream);
 
 		// start async copy. 
 
@@ -108,11 +131,12 @@ int main(int argc,char * argv[])
 		int matchIndexBF = 0;
 		// featGen.syncAnderrorCheck();
 		// start = clock();
+		
 		featGen.findMinimumOnGPU(matchIndexBF);
-		// featGen.syncAnderrorCheck();
+		 featGen.syncAnderrorCheck();
+		 std::cout << (double)(clock() - start) / CLOCKS_PER_SEC<<std::endl;
 		Rect2d r(cudaKeypts[matchIndexBF].pt, Size(cudaKeypts[matchIndexBF].size, cudaKeypts[matchIndexBF].size));
-		cv::Mat outputImg;
-		img.copyTo(outputImg);
+		cv::Mat outputImg=Mat(Size(videoWidth,videoHeight),CV_8UC3,frames[frameCounter-1],Mat::AUTO_STEP);
 		rectangle(outputImg, r, Scalar(255, 0, 0), 10);
 		resize(outputImg, outputImg, cv::Size(outputImg.cols / 2, outputImg.rows / 2));
 		// static int xctrrr = 0;
@@ -122,6 +146,14 @@ int main(int argc,char * argv[])
 		// return 0;
 		imshow("Output", outputImg);
 		waitKey(1);
+		counter++;
+		if (counter == 5);
 
 	}
+
+
+	/*for (int x = 0; x < frames.size(); ++x)
+	{
+		delete[] frames[x];
+	}*/
 }
